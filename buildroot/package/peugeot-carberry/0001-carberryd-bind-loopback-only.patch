@@ -1,0 +1,11 @@
+--- a/carberry.c
++++ b/carberry.c
+@@ -465,7 +465,7 @@
+   //Componiamo l'indirizzo del server
+   srvaddress.sin_port        = htons(tcpport);
+   srvaddress.sin_family      = AF_INET;
+-  srvaddress.sin_addr.s_addr = INADDR_ANY;
++  srvaddress.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+ 
+   //Connettiamo il socket
+   if (bind(mainsock, (struct sockaddr*)&srvaddress, sizeof(srvaddress)) < 0)

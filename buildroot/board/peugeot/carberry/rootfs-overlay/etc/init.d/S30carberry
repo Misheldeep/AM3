@@ -1,0 +1,91 @@
+#!/bin/sh
+
+PIDFILE=/run/carberryd-supervisor.pid
+LOGDIR=/var/log/carberry
+LOGFILE=${LOGDIR}/carberryd.log
+
+running()
+{
+    [ -r "$PIDFILE" ] || return 1
+    pid="$(cat "$PIDFILE" 2>/dev/null)" || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+do_start()
+{
+    if running; then
+        echo "carberry_d: already running"
+        return 0
+    fi
+
+    rm -f "$PIDFILE"
+    mkdir -p "$LOGDIR"
+
+    printf "Starting carberry_d: "
+
+    /usr/sbin/carberryd-supervisor \
+        >>"$LOGFILE" 2>&1 &
+
+    echo $! > "$PIDFILE"
+
+    echo "OK"
+}
+
+do_stop()
+{
+    # Manual stop of carberry_d must also stop the bridge first.
+    # During normal rcK shutdown S35 will already have stopped.
+    if [ -x /etc/init.d/S35peugeot-bridge ]; then
+        /etc/init.d/S35peugeot-bridge stop 2>/dev/null || true
+    fi
+
+    if ! running; then
+        rm -f "$PIDFILE"
+        echo "carberry_d: not running"
+        return 0
+    fi
+
+    pid="$(cat "$PIDFILE")"
+
+    printf "Stopping carberry_d: "
+
+    kill -TERM "$pid" 2>/dev/null || true
+
+    n=0
+    while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 5 ]; do
+        sleep 1
+        n=$((n + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$pid" 2>/dev/null || true
+
+        if [ -r /run/carberryd.child.pid ]; then
+            kill -KILL "$(cat /run/carberryd.child.pid)" \
+                2>/dev/null || true
+        fi
+    fi
+
+    rm -f "$PIDFILE" /run/carberryd.child.pid
+
+    echo "OK"
+}
+
+case "$1" in
+    start)
+        do_start
+        ;;
+    stop)
+        do_stop
+        ;;
+    restart)
+        do_stop
+        do_start
+        ;;
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

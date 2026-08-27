@@ -1,0 +1,6 @@
+# Peugeot / CarBerry
+# eth0 is configured asynchronously by S41carberry-network.
+# No DHCP here: network must never delay boot.
+
+auto lo
+iface lo inet loopback

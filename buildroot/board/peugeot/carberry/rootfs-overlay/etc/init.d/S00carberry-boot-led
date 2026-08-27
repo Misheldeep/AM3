@@ -1,0 +1,26 @@
+#!/bin/sh
+
+case "$1" in
+    start)
+        printf "CarBerry early boot LED: "
+
+        if /usr/sbin/carberry-boot-led; then
+            echo "RED SET"
+        else
+            # LED failure must never stop Linux boot.
+            echo "FAILED"
+        fi
+        ;;
+
+    stop)
+        # Deliberately do nothing.
+        # Graceful LED cleanup belongs to the bridge while carberry_d is alive.
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop}"
+        exit 1
+        ;;
+esac
+
+exit 0

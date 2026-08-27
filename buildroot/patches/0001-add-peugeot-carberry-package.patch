@@ -1,0 +1,9 @@
+--- a/package/Config.in
++++ b/package/Config.in
+@@ -2911,4 +2911,6 @@
+ 	source "package/vim/Config.in"
+ endmenu
+ 
++source "package/peugeot-carberry/Config.in"
++
+ endmenu

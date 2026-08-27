@@ -1,0 +1,24 @@
+# Python generated files
+__pycache__/
+*.py[cod]
+
+# Buildroot build products
+output/
+dl/
+
+# Disk images and filesystem images
+*.img
+*.ext2
+*.ext4
+*.squashfs
+*.vfat
+
+# Large archives generated for disaster recovery
+*.sdk.tar.*
+*.dl.tar.*
+
+# Editor / OS junk
+*~
+*.swp
+.DS_Store
+Thumbs.db

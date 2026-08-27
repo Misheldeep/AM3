@@ -1,0 +1,6 @@
+config BR2_PACKAGE_PEUGEOT_CARBERRY
+	bool "peugeot-carberry"
+	help
+	  Peugeot/CarBerry project support:
+	    - official Carberry daemon 1.5
+	    - early boot GPLED helper

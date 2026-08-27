@@ -1,0 +1,66 @@
+#------------------------------------------------------------------------------
+#  Install carberry daemon
+#------------------------------------------------------------------------------
+
+#Enter home directory:
+cd
+
+#Download the daemon:
+curl -O -J "https://www.carberry.it/index.php?route=download/download/download&download_id=30"
+
+#Untar the file:
+tar -xvf carberry_d_1.5.tar
+
+#Build the daemon
+cd carberry_d
+gcc -o carberry carberry.c
+
+#Add execution rights to just built carberry
+sudo chmod +x carberry
+
+#Try to execute carberry:
+./carberry
+
+#You will see:
+
+  Carberry Started
+
+#Kill process with CTRL-C.
+
+#Back to home directory
+cd
+
+#Create directory in /usr/local/bin
+sudo mkdir -p /usr/local/bin/carberry
+
+#Move directory to /usr/local/bin/carberry
+sudo mv carberry_d /usr/local/bin/carberry/
+
+#Move the service file in /etc/init.d
+sudo mv /usr/local/bin/carberry/carberry_d/carberry.sh /etc/init.d/carberry
+
+#Add execution rights to the service script
+sudo chmod +x /etc/init.d/carberry
+
+#Install with:
+sudo update-rc.d carberry defaults
+
+#Service operations:
+sudo service carberry stop
+sudo service carberry start
+sudo service carberry restart
+
+#Start service with:
+sudo service carberry start
+
+#Reboot system:
+sudo reboot
+
+#Check daemon execution 
+ps aux | grep carberry
+
+#You will see:
+
+pi@raspberrypi ~/carberry_d $ ps aux | grep carberry
+root     29523  0.0  0.0   2576   360 ?        S    14:35   0:00 /usr/local/bin/carberry/carberry_d/carberry
+pi       29657  0.0  0.1   3568   832 pts/0    S+   14:36   0:00 grep --color=auto carberry

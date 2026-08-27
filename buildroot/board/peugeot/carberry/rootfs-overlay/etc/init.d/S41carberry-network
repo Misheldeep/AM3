@@ -1,0 +1,55 @@
+#!/bin/sh
+
+IFACE="eth0"
+ADDR="192.168.200.1/24"
+
+case "$1" in
+    start)
+        echo "Starting CarBerry service network: ${ADDR}"
+
+        (
+            n=0
+
+            # Raspberry Pi 1 Ethernet is USB-attached and may appear
+            # after the init scripts have already started.
+            while [ ! -e "/sys/class/net/${IFACE}" ] && [ "$n" -lt 30 ]; do
+                sleep 1
+                n=$((n + 1))
+            done
+
+            if [ ! -e "/sys/class/net/${IFACE}" ]; then
+                echo "CarBerry service network: ${IFACE} not found"
+                exit 0
+            fi
+
+            ip link set "$IFACE" up
+
+            if ! ip addr show dev "$IFACE" | grep -q '192\.168\.200\.1/24'; then
+                ip addr add "$ADDR" dev "$IFACE"
+            fi
+
+            echo "CarBerry service network ready: ${ADDR}"
+        ) &
+
+        # Important: do not wait for Ethernet.
+        exit 0
+        ;;
+
+    stop)
+        if [ -e "/sys/class/net/${IFACE}" ]; then
+            ip addr del "$ADDR" dev "$IFACE" 2>/dev/null || true
+        fi
+        ;;
+
+    restart)
+        "$0" stop
+        "$0" start
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

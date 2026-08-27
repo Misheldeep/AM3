@@ -1,0 +1,38 @@
+#!/bin/sh
+
+child=""
+stopping=0
+CHILD_PIDFILE=/run/carberryd.child.pid
+
+terminate()
+{
+    stopping=1
+
+    if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then
+        kill -TERM "$child" 2>/dev/null || true
+        wait "$child" 2>/dev/null || true
+    fi
+
+    rm -f "$CHILD_PIDFILE"
+    exit 0
+}
+
+trap terminate TERM INT HUP
+
+while :; do
+    /usr/sbin/carberryd &
+    child=$!
+
+    echo "$child" > "$CHILD_PIDFILE"
+
+    wait "$child"
+    rc=$?
+
+    rm -f "$CHILD_PIDFILE"
+    child=""
+
+    [ "$stopping" -eq 1 ] && exit 0
+
+    echo "carberryd exited rc=${rc}; restarting in 2 s" >&2
+    sleep 2
+done

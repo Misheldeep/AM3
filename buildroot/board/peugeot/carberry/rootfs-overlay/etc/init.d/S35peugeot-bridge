@@ -1,0 +1,95 @@
+#!/bin/sh
+
+PIDFILE=/run/peugeot-bridge-supervisor.pid
+CHILD_PIDFILE=/run/peugeot-bridge.child.pid
+LOGDIR=/var/log/carberry
+LOGFILE=${LOGDIR}/bridge.log
+
+running()
+{
+    [ -r "$PIDFILE" ] || return 1
+    pid="$(cat "$PIDFILE" 2>/dev/null)" || return 1
+    kill -0 "$pid" 2>/dev/null
+}
+
+do_start()
+{
+    if running; then
+        echo "peugeot-bridge: already running"
+        return 0
+    fi
+
+    rm -f "$PIDFILE" "$CHILD_PIDFILE"
+
+    mkdir -p "$LOGDIR" "$LOGDIR/captures"
+
+    printf "Starting Peugeot bridge: "
+
+    /usr/sbin/peugeot-bridge-supervisor \
+        >>"$LOGFILE" 2>&1 &
+
+    echo $! > "$PIDFILE"
+
+    echo "OK"
+}
+
+do_stop()
+{
+    if ! running; then
+        rm -f "$PIDFILE" "$CHILD_PIDFILE"
+        echo "peugeot-bridge: not running"
+        return 0
+    fi
+
+    pid="$(cat "$PIDFILE")"
+
+    printf "Stopping Peugeot bridge: "
+
+    # Supervisor forwards TERM to Python.
+    kill -TERM "$pid" 2>/dev/null || true
+
+    # Keep carberry_d alive during this entire grace period.
+    n=0
+    while kill -0 "$pid" 2>/dev/null && [ "$n" -lt 5 ]; do
+        sleep 1
+        n=$((n + 1))
+    done
+
+    if kill -0 "$pid" 2>/dev/null; then
+        kill -KILL "$pid" 2>/dev/null || true
+
+        if [ -r "$CHILD_PIDFILE" ]; then
+            child="$(cat "$CHILD_PIDFILE" 2>/dev/null)"
+
+            if [ -n "$child" ]; then
+                kill -KILL "$child" 2>/dev/null || true
+            fi
+        fi
+    fi
+
+    rm -f "$PIDFILE" "$CHILD_PIDFILE"
+
+    echo "OK"
+}
+
+case "$1" in
+    start)
+        do_start
+        ;;
+
+    stop)
+        do_stop
+        ;;
+
+    restart)
+        do_stop
+        do_start
+        ;;
+
+    *)
+        echo "Usage: $0 {start|stop|restart}"
+        exit 1
+        ;;
+esac
+
+exit 0

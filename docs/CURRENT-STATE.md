@@ -91,12 +91,16 @@ Expected:
 - PIC startup should be substantially faster than Raspberry Pi startup to S00,
   so this is expected to work, but remains an unverified hardware test.
 
-## Networking
+## Networking (dev03 WIP)
 
 - CarBerry: 192.168.200.1/24
 - Service laptop: 192.168.200.2/24
-- No DHCP
-- Ethernet configuration is asynchronous and must not delay boot
+- Fixed service address 192.168.200.1/24 is configured asynchronously
+- A second IPv4 address is requested by DHCP when a server is available
+- DHCP runs entirely in the background and must never delay boot
+- The fixed service address remains present alongside the DHCP lease; if a DHCP
+  gateway itself is 192.168.200.1, the service address is suppressed to avoid
+  black-holing that gateway
 - Dropbear SSH enabled
 
 ## dev02 image
@@ -122,3 +126,7 @@ bridge is migrated from Python to C:
   logging and CAN sniffing.
 
 No CAN pre-trigger/ring buffer is currently planned.
+
+
+## Console getty normalization (dev03 WIP)
+The Raspberry Pi post-build hook and Buildroot generic getty can both create a tty1 getty. CarBerry now runs `board/peugeot/carberry/post-build.sh` after the Raspberry Pi hook and normalizes `/etc/inittab` to exactly one tty1 getty.

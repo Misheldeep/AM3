@@ -1,17 +1,78 @@
 #!/bin/sh
 
 IFACE="eth0"
-ADDR="192.168.200.1/24"
+SERVICE_ADDR="192.168.200.1/24"
+DHCP_PIDFILE="/run/udhcpc-${IFACE}.pid"
+DHCP_SCRIPT="/usr/sbin/carberry-udhcpc"
+DHCP_STATE_DIR="/run/carberry-dhcp"
+
+start_dhcp() {
+    if ! command -v udhcpc >/dev/null 2>&1; then
+        echo "CarBerry DHCP: udhcpc not installed"
+        return 0
+    fi
+
+    if [ -s "$DHCP_PIDFILE" ]; then
+        pid="$(cat "$DHCP_PIDFILE" 2>/dev/null)"
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            return 0
+        fi
+        rm -f "$DHCP_PIDFILE"
+    fi
+
+    # Keep DHCP completely off the boot critical path.  -f keeps the client
+    # as one predictable background process; it retries indefinitely.
+    udhcpc \
+        -f \
+        -S \
+        -i "$IFACE" \
+        -p "$DHCP_PIDFILE" \
+        -s "$DHCP_SCRIPT" \
+        -t 3 \
+        -T 2 \
+        -A 20 \
+        -x hostname:CarBerry \
+        >/dev/null 2>&1 &
+
+    echo "CarBerry DHCP client started asynchronously"
+}
+
+stop_dhcp() {
+    if [ -s "$DHCP_PIDFILE" ]; then
+        pid="$(cat "$DHCP_PIDFILE" 2>/dev/null)"
+        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
+            kill "$pid" 2>/dev/null || true
+        fi
+        rm -f "$DHCP_PIDFILE"
+    fi
+
+    if [ -s "$DHCP_STATE_DIR/router" ]; then
+        router="$(cat "$DHCP_STATE_DIR/router" 2>/dev/null)"
+        if [ -n "$router" ]; then
+            ip route del default via "$router" dev "$IFACE" metric 100 \
+                2>/dev/null || true
+        fi
+    fi
+
+    if [ -s "$DHCP_STATE_DIR/address" ]; then
+        addr="$(cat "$DHCP_STATE_DIR/address" 2>/dev/null)"
+        if [ -n "$addr" ] && [ "$addr" != "$SERVICE_ADDR" ]; then
+            ip addr del "$addr" dev "$IFACE" 2>/dev/null || true
+        fi
+    fi
+
+    rm -rf "$DHCP_STATE_DIR"
+}
 
 case "$1" in
     start)
-        echo "Starting CarBerry service network: ${ADDR}"
+        echo "Starting CarBerry service network: ${SERVICE_ADDR}"
 
         (
             n=0
 
-            # Raspberry Pi 1 Ethernet is USB-attached and may appear
-            # after the init scripts have already started.
+            # Raspberry Pi 1 Ethernet is USB-attached and may appear after
+            # the init scripts have already started.
             while [ ! -e "/sys/class/net/${IFACE}" ] && [ "$n" -lt 30 ]; do
                 sleep 1
                 n=$((n + 1))
@@ -25,19 +86,21 @@ case "$1" in
             ip link set "$IFACE" up
 
             if ! ip addr show dev "$IFACE" | grep -q '192\.168\.200\.1/24'; then
-                ip addr add "$ADDR" dev "$IFACE"
+                ip addr add "$SERVICE_ADDR" dev "$IFACE"
             fi
 
-            echo "CarBerry service network ready: ${ADDR}"
+            echo "CarBerry service network ready: ${SERVICE_ADDR}"
+            start_dhcp
         ) &
 
-        # Important: do not wait for Ethernet.
+        # Neither USB-Ethernet enumeration nor DHCP may delay boot.
         exit 0
         ;;
 
     stop)
+        stop_dhcp
         if [ -e "/sys/class/net/${IFACE}" ]; then
-            ip addr del "$ADDR" dev "$IFACE" 2>/dev/null || true
+            ip addr del "$SERVICE_ADDR" dev "$IFACE" 2>/dev/null || true
         fi
         ;;
 

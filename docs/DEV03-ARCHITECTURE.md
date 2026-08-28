@@ -79,3 +79,21 @@ Automatic scenarios never send OK.
 - Android/AVRCP metadata transport;
 - final choice of display charset/transliteration policy;
 - final named HU source profiles after the C0..CF visual scan.
+
+## Local console and Ethernet
+
+- The local login getty is explicitly bound to `tty1`. This avoids creating
+  both a generic `/dev/console` getty and the Raspberry Pi post-build HDMI
+  `tty1` getty when the kernel console itself is `tty1`.
+- `eth0` always receives the fixed service address `192.168.200.1/24` when
+  available.
+- A BusyBox `udhcpc` client runs asynchronously and may add a second IPv4
+  address plus a default route from DHCP. DHCP must never block boot.
+- DHCP lease handling never flushes the fixed service address. If the DHCP
+  gateway itself is `192.168.200.1`, the fixed service address is temporarily
+  suppressed to avoid an address/gateway collision and is restored when the
+  lease is removed.
+
+
+## Console
+The final CarBerry post-build hook removes duplicate tty1 gettys and appends exactly one `tty1` login entry after the Raspberry Pi post-build hook.

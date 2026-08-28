@@ -1,0 +1,145 @@
+#!/bin/sh
+
+# DHCP event hook for CarBerry eth0.
+# Keep the fixed service address managed by S41carberry-network; only manage
+# the additional DHCP address, default route and lease metadata here.
+
+EVENT="$1"
+IFACE="${interface:-eth0}"
+STATE_DIR="/run/carberry-dhcp"
+ADDR_FILE="${STATE_DIR}/address"
+ROUTER_FILE="${STATE_DIR}/router"
+DNS_FILE="${STATE_DIR}/dns"
+SERVICE_IP="192.168.200.1"
+SERVICE_CIDR="192.168.200.1/24"
+
+mkdir -p "$STATE_DIR"
+
+log_msg() {
+    if command -v logger >/dev/null 2>&1; then
+        logger -t carberry-dhcp "$*"
+    fi
+}
+
+mask_to_prefix() {
+    mask="$1"
+    prefix=0
+    oldifs="$IFS"
+    IFS=.
+    set -- $mask
+    IFS="$oldifs"
+
+    [ "$#" -eq 4 ] || return 1
+
+    for octet in "$@"; do
+        case "$octet" in
+            255) bits=8 ;;
+            254) bits=7 ;;
+            252) bits=6 ;;
+            248) bits=5 ;;
+            240) bits=4 ;;
+            224) bits=3 ;;
+            192) bits=2 ;;
+            128) bits=1 ;;
+            0)   bits=0 ;;
+            *) return 1 ;;
+        esac
+        prefix=$((prefix + bits))
+    done
+
+    echo "$prefix"
+}
+
+remove_old_address() {
+    if [ -s "$ADDR_FILE" ]; then
+        old_addr="$(cat "$ADDR_FILE" 2>/dev/null)"
+        case "$old_addr" in
+            ""|"$SERVICE_CIDR") ;;
+            *) ip addr del "$old_addr" dev "$IFACE" 2>/dev/null || true ;;
+        esac
+        rm -f "$ADDR_FILE"
+    fi
+}
+
+ensure_service_address() {
+    if ! ip -4 addr show dev "$IFACE" | grep -q '192\.168\.200\.1/24'; then
+        ip addr add "$SERVICE_CIDR" dev "$IFACE" 2>/dev/null || true
+    fi
+}
+
+remove_old_route() {
+    if [ -s "$ROUTER_FILE" ]; then
+        old_router="$(cat "$ROUTER_FILE" 2>/dev/null)"
+        if [ -n "$old_router" ]; then
+            ip route del default via "$old_router" dev "$IFACE" metric 100 \
+                2>/dev/null || true
+        fi
+        rm -f "$ROUTER_FILE"
+    fi
+}
+
+case "$EVENT" in
+    deconfig)
+        remove_old_route
+        remove_old_address
+        rm -f "$DNS_FILE"
+        ensure_service_address
+        log_msg "lease removed on $IFACE; service address is $SERVICE_CIDR"
+        ;;
+
+    bound|renew)
+        prefix="$(mask_to_prefix "${subnet:-}" 2>/dev/null)" || prefix=""
+        if [ -z "${ip:-}" ] || [ -z "$prefix" ]; then
+            log_msg "ignoring $EVENT event with incomplete address/subnet data"
+            exit 0
+        fi
+
+        new_addr="${ip}/${prefix}"
+        old_addr="$(cat "$ADDR_FILE" 2>/dev/null || true)"
+        if [ -n "$old_addr" ] && [ "$old_addr" != "$new_addr" ]; then
+            case "$old_addr" in
+                "$SERVICE_CIDR") ;;
+                *) ip addr del "$old_addr" dev "$IFACE" 2>/dev/null || true ;;
+            esac
+        fi
+
+        # A DHCP server should never hand out the fixed service IP to this
+        # interface. If it does, do not try to add the same address twice.
+        if [ "$ip" != "$SERVICE_IP" ]; then
+            if ! ip -4 addr show dev "$IFACE" | grep -Fq " $new_addr "; then
+                ip addr add "$new_addr" dev "$IFACE"
+            fi
+            echo "$new_addr" > "$ADDR_FILE"
+        fi
+
+        remove_old_route
+        if [ -n "${router:-}" ]; then
+            set -- $router
+            first_router="$1"
+
+            # If an attached LAN itself uses 192.168.200.1 as its gateway,
+            # that conflicts with our service address. Prefer the DHCP LAN in
+            # that exceptional case rather than black-holing the gateway.
+            if [ "$first_router" = "$SERVICE_IP" ]; then
+                ip addr del "$SERVICE_CIDR" dev "$IFACE" 2>/dev/null || true
+                log_msg "service address suppressed: DHCP gateway is $SERVICE_IP"
+            fi
+
+            ip route replace default via "$first_router" dev "$IFACE" metric 100
+            echo "$first_router" > "$ROUTER_FILE"
+        fi
+
+        : > "$DNS_FILE"
+        for server in ${dns:-}; do
+            echo "$server" >> "$DNS_FILE"
+        done
+
+        log_msg "$EVENT lease on $IFACE: $new_addr router=${router:-none} dns=${dns:-none}"
+        ;;
+
+    nak|leasefail)
+        log_msg "DHCP $1 on $IFACE"
+        ;;
+esac
+
+exit 0

@@ -21,7 +21,7 @@ do_start()
 
     rm -f "$PIDFILE" "$CHILD_PIDFILE"
 
-    mkdir -p "$LOGDIR" "$LOGDIR/captures"
+    mkdir -p "$LOGDIR"
 
     printf "Starting Peugeot bridge: "
 

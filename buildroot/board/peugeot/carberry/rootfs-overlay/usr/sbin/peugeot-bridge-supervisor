@@ -1,38 +1,71 @@
 #!/bin/sh
 
-child=""
+BRIDGE=/opt/carberry/peugeot_bridge.py
+PYTHON=/usr/bin/python3
+LOGDIR=/var/log/carberry
+LOGFILE="$LOGDIR/bridge.log"
+CHILD_PIDFILE=/run/peugeot-bridge.pid
+DEFAULTS=/etc/default/peugeot-bridge
+RESTART_DELAY=2
+
 stopping=0
-CHILD_PIDFILE=/run/peugeot-bridge.child.pid
+child=""
 
-terminate()
-{
-    stopping=1
+if [ -r "$DEFAULTS" ]; then
+    . "$DEFAULTS"
+fi
+export PEUGEOT_AUTOCONTROL_DEFAULT PEUGEOT_BT_GPIO_MODE
 
+mkdir -p "$LOGDIR"
+
+echo "===== peugeot-bridge supervisor start uptime=$(cut -d' ' -f1 /proc/uptime 2>/dev/null) =====" >> "$LOGFILE"
+
+stop_child() {
     if [ -n "$child" ] && kill -0 "$child" 2>/dev/null; then
         kill -TERM "$child" 2>/dev/null || true
+        i=0
+        while kill -0 "$child" 2>/dev/null && [ "$i" -lt 5 ]; do
+            sleep 1
+            i=$((i + 1))
+        done
+        if kill -0 "$child" 2>/dev/null; then
+            kill -KILL "$child" 2>/dev/null || true
+        fi
         wait "$child" 2>/dev/null || true
     fi
-
     rm -f "$CHILD_PIDFILE"
+    child=""
+}
+
+on_stop() {
+    stopping=1
+    stop_child
     exit 0
 }
 
-trap terminate TERM INT HUP
+trap on_stop INT TERM HUP
 
-while :; do
-    /usr/bin/python3 /opt/carberry/peugeot_bridge.py &
+while [ "$stopping" -eq 0 ]; do
+    # Direct-UART production bridge and carberry_d are mutually exclusive.
+    if pidof carberryd >/dev/null 2>&1; then
+        echo "WARN: carberryd is running; bridge start deferred (UART busy)" >> "$LOGFILE"
+        sleep "$RESTART_DELAY"
+        continue
+    fi
+
+    "$PYTHON" -u "$BRIDGE" >> "$LOGFILE" 2>&1 &
     child=$!
-
     echo "$child" > "$CHILD_PIDFILE"
 
     wait "$child"
     rc=$?
-
     rm -f "$CHILD_PIDFILE"
     child=""
 
-    [ "$stopping" -eq 1 ] && exit 0
+    [ "$stopping" -ne 0 ] && break
 
-    echo "peugeot-bridge exited rc=${rc}; restarting in 2 s" >&2
-    sleep 2
+    echo "WARN: peugeot_bridge.py exited rc=$rc; restart in ${RESTART_DELAY}s" >> "$LOGFILE"
+    sleep "$RESTART_DELAY"
 done
+
+exit 0

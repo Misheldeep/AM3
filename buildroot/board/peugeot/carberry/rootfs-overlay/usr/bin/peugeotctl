@@ -1,1 +1,2 @@
-/opt/carberry/peugeotctl.py
+#!/bin/sh
+exec /usr/bin/python3 -u /opt/carberry/peugeotctl.py "$@"

@@ -1,0 +1,10 @@
+# Peugeot / CarBerry bridge runtime defaults.
+# Sourced by /usr/sbin/peugeot-bridge-supervisor.
+
+# Keep steering-wheel -> Harmony automatic control disabled until the
+# Master/Sub page-toggle sequence is verified end-to-end in the car.
+PEUGEOT_AUTOCONTROL_DEFAULT=0
+
+# QCC5181 electrical interface is not yet verified. Pins are reserved, but
+# must not be driven until the input circuit is checked.
+PEUGEOT_BT_GPIO_MODE=disabled
